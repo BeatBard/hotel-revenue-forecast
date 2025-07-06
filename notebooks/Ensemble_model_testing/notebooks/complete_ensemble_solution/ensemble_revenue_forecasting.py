@@ -1142,6 +1142,13 @@ class HotelRevenueEnsemble:
             {k: v for k, v in clean_dataset.items() if k.startswith('y_')}
         )
         
+        # Step 9.5: Create meal period specific analysis
+        meal_metrics, meal_analysis_df = self.create_meal_period_analysis(
+            predictions,
+            {k: v for k, v in clean_dataset.items() if k.startswith('y_')},
+            splits
+        )
+        
         # Step 10: Save model package
         self.save_model_package(
             predictions,
@@ -1160,8 +1167,229 @@ class HotelRevenueEnsemble:
             'models': trained_models,
             'predictions': predictions,
             'evaluation': results_df,
-            'clean_dataset': clean_dataset
+            'clean_dataset': clean_dataset,
+            'meal_metrics': meal_metrics,
+            'meal_analysis': meal_analysis_df
         }
+
+    def create_meal_period_analysis(self, predictions: Dict, target_data: Dict, splits: Dict, save_plots: bool = True):
+        """
+        Create detailed analysis and visualizations by meal period (Breakfast, Lunch, Dinner)
+        """
+        print("\n🍽️ CREATING MEAL PERIOD SPECIFIC ANALYSIS")
+        print("=" * 80)
+        
+        # Combine test data with meal period information
+        test_data = splits['test'].copy()
+        y_test = target_data['y_test']
+        
+        # Get best ensemble predictions
+        ensemble_names = list(predictions['ensemble'].keys())
+        best_ensemble = max(ensemble_names, key=lambda x: r2_score(y_test, predictions['ensemble'][x]['test']))
+        best_test_pred = predictions['ensemble'][best_ensemble]['test']
+        
+        # Create analysis DataFrame
+        analysis_df = pd.DataFrame({
+            'Actual': y_test.values,
+            'Predicted': best_test_pred,
+            'MealPeriod': test_data['MealPeriod'].values,
+            'Date': test_data['Date'].values
+        })
+        
+        # Calculate meal-specific metrics
+        meal_metrics = {}
+        meal_periods = ['Breakfast', 'Lunch', 'Dinner']
+        
+        print("\n📊 MEAL PERIOD PERFORMANCE BREAKDOWN:")
+        print("-" * 60)
+        
+        for meal in meal_periods:
+            meal_data = analysis_df[analysis_df['MealPeriod'] == meal]
+            if len(meal_data) > 0:
+                actual = meal_data['Actual'].values
+                predicted = meal_data['Predicted'].values
+                
+                mae = mean_absolute_error(actual, predicted)
+                rmse = np.sqrt(mean_squared_error(actual, predicted))
+                r2 = r2_score(actual, predicted)
+                
+                # MAPE calculation
+                mask = actual != 0
+                mape = np.mean(np.abs((actual[mask] - predicted[mask]) / actual[mask])) * 100 if mask.any() else float('inf')
+                
+                meal_metrics[meal] = {
+                    'Count': len(meal_data),
+                    'MAE': mae,
+                    'RMSE': rmse,
+                    'R²': r2,
+                    'MAPE': mape,
+                    'Avg_Actual': actual.mean(),
+                    'Avg_Predicted': predicted.mean()
+                }
+                
+                print(f"\n🍽️  {meal.upper()}:")
+                print(f"   Samples: {len(meal_data)}")
+                print(f"   MAE: ${mae:.2f}")
+                print(f"   RMSE: ${rmse:.2f}")
+                print(f"   R²: {r2:.4f}")
+                print(f"   MAPE: {mape:.2f}%")
+                print(f"   Avg Revenue: ${actual.mean():.2f} (Actual) vs ${predicted.mean():.2f} (Predicted)")
+        
+        # Create meal period visualizations
+        if save_plots:
+            # 1. Meal Period Performance Comparison
+            fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+            fig.suptitle(f'Meal Period Analysis - {best_ensemble} Ensemble', fontsize=16, fontweight='bold')
+            
+            # Performance metrics comparison
+            ax1 = axes[0, 0]
+            metrics = ['MAE', 'RMSE', 'R²']
+            x = np.arange(len(meal_periods))
+            width = 0.25
+            
+            for i, metric in enumerate(metrics):
+                values = [meal_metrics[meal][metric] for meal in meal_periods]
+                ax1.bar(x + i*width, values, width, label=metric, alpha=0.8)
+            
+            ax1.set_xlabel('Meal Period')
+            ax1.set_ylabel('Metric Value')
+            ax1.set_title('Performance Metrics by Meal Period')
+            ax1.set_xticks(x + width)
+            ax1.set_xticklabels(meal_periods)
+            ax1.legend()
+            ax1.grid(True, alpha=0.3)
+            
+            # Average revenue comparison
+            ax2 = axes[0, 1]
+            actual_avgs = [meal_metrics[meal]['Avg_Actual'] for meal in meal_periods]
+            predicted_avgs = [meal_metrics[meal]['Avg_Predicted'] for meal in meal_periods]
+            
+            x = np.arange(len(meal_periods))
+            width = 0.35
+            ax2.bar(x - width/2, actual_avgs, width, label='Actual', alpha=0.8, color='blue')
+            ax2.bar(x + width/2, predicted_avgs, width, label='Predicted', alpha=0.8, color='orange')
+            
+            ax2.set_xlabel('Meal Period')
+            ax2.set_ylabel('Average Revenue ($)')
+            ax2.set_title('Average Revenue by Meal Period')
+            ax2.set_xticks(x)
+            ax2.set_xticklabels(meal_periods)
+            ax2.legend()
+            ax2.grid(True, alpha=0.3)
+            
+            # Sample count by meal period
+            ax3 = axes[0, 2]
+            counts = [meal_metrics[meal]['Count'] for meal in meal_periods]
+            ax3.pie(counts, labels=meal_periods, autopct='%1.1f%%', startangle=90)
+            ax3.set_title('Sample Distribution by Meal Period')
+            
+            # Predictions vs Actual by meal period
+            colors = ['red', 'green', 'blue']
+            for i, meal in enumerate(meal_periods):
+                ax = axes[1, i]
+                meal_data = analysis_df[analysis_df['MealPeriod'] == meal]
+                
+                if len(meal_data) > 0:
+                    actual = meal_data['Actual'].values
+                    predicted = meal_data['Predicted'].values
+                    
+                    ax.scatter(actual, predicted, alpha=0.6, color=colors[i], s=30)
+                    
+                    # Perfect prediction line
+                    min_val, max_val = min(actual.min(), predicted.min()), max(actual.max(), predicted.max())
+                    ax.plot([min_val, max_val], [min_val, max_val], 'k--', alpha=0.75, linewidth=2)
+                    
+                    # Calculate and display R²
+                    r2 = r2_score(actual, predicted)
+                    ax.set_title(f'{meal}\nR² = {r2:.3f}, n = {len(meal_data)}')
+                    ax.set_xlabel('Actual Revenue ($)')
+                    ax.set_ylabel('Predicted Revenue ($)')
+                    ax.grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            plt.savefig('meal_period_analysis.png', dpi=300, bbox_inches='tight')
+            plt.show()
+            
+            # 2. Time Series by Meal Period
+            fig, axes = plt.subplots(3, 1, figsize=(16, 12))
+            fig.suptitle('Time Series Analysis by Meal Period', fontsize=16, fontweight='bold')
+            
+            for i, meal in enumerate(meal_periods):
+                meal_data = analysis_df[analysis_df['MealPeriod'] == meal].sort_values('Date')
+                
+                if len(meal_data) > 0:
+                    ax = axes[i]
+                    dates = meal_data['Date']
+                    actual = meal_data['Actual'].values
+                    predicted = meal_data['Predicted'].values
+                    
+                    ax.plot(dates, actual, label='Actual', color='blue', linewidth=2, alpha=0.7)
+                    ax.plot(dates, predicted, label='Predicted', color='orange', linewidth=2, alpha=0.7)
+                    
+                    ax.set_title(f'{meal} Revenue Over Time')
+                    ax.set_ylabel('Revenue ($)')
+                    ax.legend()
+                    ax.grid(True, alpha=0.3)
+                    
+                    # Rotate x-axis labels for better readability
+                    ax.tick_params(axis='x', rotation=45)
+            
+            plt.tight_layout()
+            plt.savefig('meal_period_time_series.png', dpi=300, bbox_inches='tight')
+            plt.show()
+            
+            # 3. Weekly Pattern Analysis by Meal
+            fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+            fig.suptitle('Day of Week Patterns by Meal Period', fontsize=16, fontweight='bold')
+            
+            # Add day of week to analysis
+            analysis_df['DayOfWeek'] = analysis_df['Date'].dt.day_name()
+            day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+            
+            for i, meal in enumerate(meal_periods):
+                ax = axes[i]
+                meal_data = analysis_df[analysis_df['MealPeriod'] == meal]
+                
+                if len(meal_data) > 0:
+                    daily_stats = meal_data.groupby('DayOfWeek')['Actual'].agg(['mean', 'std']).reindex(day_order)
+                    daily_pred = meal_data.groupby('DayOfWeek')['Predicted'].mean().reindex(day_order)
+                    
+                    x = np.arange(len(day_order))
+                    ax.bar(x - 0.2, daily_stats['mean'], 0.4, label='Actual', alpha=0.8, color='blue')
+                    ax.bar(x + 0.2, daily_pred, 0.4, label='Predicted', alpha=0.8, color='orange')
+                    
+                    # Add error bars for actual values
+                    ax.errorbar(x - 0.2, daily_stats['mean'], yerr=daily_stats['std'], 
+                               fmt='none', color='black', capsize=3, alpha=0.7)
+                    
+                    ax.set_title(f'{meal} - Weekly Pattern')
+                    ax.set_xlabel('Day of Week')
+                    ax.set_ylabel('Average Revenue ($)')
+                    ax.set_xticks(x)
+                    ax.set_xticklabels(day_order, rotation=45)
+                    ax.legend()
+                    ax.grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            plt.savefig('meal_period_weekly_patterns.png', dpi=300, bbox_inches='tight')
+            plt.show()
+        
+        # Save meal period analysis to CSV
+        meal_metrics_df = pd.DataFrame(meal_metrics).T
+        meal_metrics_df.to_csv('meal_period_performance_metrics.csv')
+        
+        # Save detailed predictions by meal period
+        analysis_df.to_csv('predictions_by_meal_period.csv', index=False)
+        
+        print(f"\n✅ Meal period analysis completed!")
+        print(f"   📊 Performance metrics saved: meal_period_performance_metrics.csv")
+        print(f"   📈 Detailed predictions saved: predictions_by_meal_period.csv")
+        print(f"   🖼️  Visualizations saved:")
+        print(f"      - meal_period_analysis.png")
+        print(f"      - meal_period_time_series.png") 
+        print(f"      - meal_period_weekly_patterns.png")
+        
+        return meal_metrics, analysis_df
 
 def main():
     """
