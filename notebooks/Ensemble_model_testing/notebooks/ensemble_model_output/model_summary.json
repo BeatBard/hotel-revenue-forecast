@@ -1,0 +1,26 @@
+{
+  "feature_count": 44,
+  "models_trained": [
+    "Ridge",
+    "RandomForest",
+    "XGBoost",
+    "LightGBM",
+    "GradientBoosting"
+  ],
+  "ensemble_methods": [
+    "Simple_Average",
+    "Weighted_Average",
+    "Top3_Average",
+    "Median_Ensemble"
+  ],
+  "best_validation_r2": 0.5313201901184782,
+  "best_test_r2": 0.4860089655955947,
+  "ensemble_weights": {
+    "Ridge": 0.24289228336533808,
+    "RandomForest": 0.17672222557061967,
+    "XGBoost": 0.19812322757476647,
+    "LightGBM": 0.18607931937542832,
+    "GradientBoosting": 0.1961829441138475
+  },
+  "training_date": "2025-07-06T23:05:46.048279"
+}

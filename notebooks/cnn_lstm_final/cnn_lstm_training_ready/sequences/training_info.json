@@ -1,0 +1,13 @@
+{
+  "sequence_length": 28,
+  "forecast_horizon": 7,
+  "total_sequences": 452,
+  "train_sequences": 361,
+  "test_sequences": 91,
+  "train_split_ratio": 0.7986725663716814,
+  "feature_count": 26,
+  "meal_count": 3,
+  "training_date_range": "2023-01-29 00:00:00 to 2024-01-24 00:00:00",
+  "testing_date_range": "2024-01-25 00:00:00 to 2024-04-24 00:00:00",
+  "created_timestamp": "2025-07-06T15:37:41.819264"
+}

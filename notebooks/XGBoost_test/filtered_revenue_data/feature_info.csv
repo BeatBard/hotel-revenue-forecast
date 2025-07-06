@@ -1,0 +1,16 @@
+feature_rank,feature_name,available
+1,MealPeriod_num,True
+2,Year,True
+3,Month,True
+4,DayOfWeek,True
+5,IslamicPeriod_num,True
+6,IsNewYear,True
+7,IsPreRamadan,True
+8,IsPreEvent,True
+9,IsLast10Ramadan,True
+10,is_zero,True
+11,IsSummerEvent,True
+12,IsMarathon,True
+13,IsFoodFestival,True
+14,IsDSF,True
+15,IsRamadan,True
